@@ -11,10 +11,17 @@ import { Footer } from "@/components/footer"
 import { SecurityNotice } from "@/components/security-notice"
 import * as XLSX from 'xlsx'
 import mammoth from 'mammoth'
-import * as pdfjsLib from 'pdfjs-dist'
 import { processFilesInChunks } from "@/utils/workerUtils"
 import { sendToOpenAI, validateOpenAIKey, sendFinalAnalysisToOpenAI, sendFollowUpQuestionToOpenAI, sendInitialAnalysisToOpenAI } from "@/utils/openaiUtils"
 import { encryptApiKey, decryptApiKey } from "@/utils/securityUtils"
+
+// Import PDF.js dynamically to avoid SSR issues
+const pdfjsLib = typeof window !== 'undefined' ? require('pdfjs-dist') : null;
+
+// Set the worker source for pdf.js (client-side only)
+if (typeof window !== 'undefined' && pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+}
 
 // Define FileInfo interface for document processing
 interface FileInfo {
@@ -23,11 +30,6 @@ interface FileInfo {
   size: number;
   lastModified: string;
   content: any;
-}
-
-// Set the worker source for pdf.js
-if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 }
 
 // Function to detect data type
@@ -63,8 +65,12 @@ function analyzeJsonStructure(obj: any, depth = 0) {
   return result;
 }
 
-// Function to handle PDF parsing
+// PDF handling function with SSR safety
 async function handlePdf(file: File) {
+  if (!pdfjsLib) {
+    throw new Error('PDF processing is only available in the browser');
+  }
+  
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
   let text = "";
