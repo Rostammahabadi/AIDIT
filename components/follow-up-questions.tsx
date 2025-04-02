@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Loader2, Send } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -17,7 +17,10 @@ interface Question {
 }
 
 export function FollowUpQuestions({ questions, isLoading, onSubmitResponse }: FollowUpQuestionsProps) {
-  const [responses, setResponses] = useState<{[key: string]: string}>({})
+  console.log("FollowUpQuestions component rendering with questions:", questions ? "present" : "null");
+  console.log("isLoading:", isLoading);
+  
+  const [responses, setResponses] = useState<{[key: string]: string}>({});
   const [parsedQuestions, setParsedQuestions] = useState<Question[]>([])
   const [summaryText, setSummaryText] = useState("")
   
@@ -25,46 +28,142 @@ export function FollowUpQuestions({ questions, isLoading, onSubmitResponse }: Fo
   useEffect(() => {
     if (!questions) return;
     
-    // Extract the summary section (everything before "Follow-up Questions")
-    const followUpIndex = questions.indexOf("Follow-up Questions");
+    console.log("Parsing questions from text");
+    
+    // Look for the FOLLOW-UP QUESTIONS section (case insensitive)
+    const followUpIndex = questions.search(/FOLLOW-UP QUESTIONS/i);
     if (followUpIndex !== -1) {
+      // Extract the summary section (everything before the follow-up questions)
       setSummaryText(questions.substring(0, followUpIndex).trim());
       
       // Extract the questions section
       const questionsSection = questions.substring(followUpIndex);
       
-      // Parse the numbered questions and their sub-questions
-      const questionRegex = /(\d+)\.\s+\*\*([^:]+)\*\*:([^0-9]+)/g;
+      // First try to find category headers (like "A) CORE USE CASE & QUERY NEEDS")
+      const categoryRegex = /([A-Z]\)\s+[^0-9]+)(?=\d+\.|[A-Z]\)|\n\n|$)/g;
+      const categoryMatches = [...questionsSection.matchAll(categoryRegex)];
+      
+      if (categoryMatches.length > 0) {
+        console.log("Found category headers:", categoryMatches.length);
+        
+        // Process each category
+        const extractedQuestions: Question[] = [];
+        
+        categoryMatches.forEach((match, index) => {
+          const categoryText = match[1].trim();
+          const categoryStart = match.index || 0;
+          const nextCategoryStart = index < categoryMatches.length - 1 
+            ? categoryMatches[index + 1].index 
+            : questionsSection.length;
+          
+          // Extract the content for this category
+          const categoryContent = questionsSection.substring(
+            categoryStart + match[0].length,
+            nextCategoryStart
+          );
+          
+          // Find numbered questions within this category
+          const questionRegex = /(\d+)\.\s+([^\n]+)/g;
+          const questionMatches = [...categoryContent.matchAll(questionRegex)];
+          
+          if (questionMatches.length > 0) {
+            console.log("Found numbered questions in category:", questionMatches.length);
+            
+            questionMatches.forEach(qMatch => {
+              extractedQuestions.push({
+                category: categoryText,
+                questions: [qMatch[2].trim()]
+              });
+            });
+          }
+        });
+        
+        if (extractedQuestions.length > 0) {
+          console.log("Parsed questions with categories:", extractedQuestions.length);
+          setParsedQuestions(extractedQuestions);
+          
+          // Initialize responses object with empty strings
+          const initialResponses: {[key: string]: string} = {};
+          extractedQuestions.forEach((q, i) => {
+            initialResponses[`question_${i}`] = '';
+          });
+          setResponses(initialResponses);
+          return;
+        }
+      }
+      
+      // If category parsing failed, fall back to just finding numbered questions
+      const questionRegex = /(\d+)\.\s+([^\n]+)/g;
       const matches = [...questionsSection.matchAll(questionRegex)];
       
-      const extractedQuestions: Question[] = matches.map(match => {
-        const category = match[2].trim();
-        const questionText = match[3].trim();
+      if (matches.length > 0) {
+        console.log("Found numbered questions:", matches.length);
         
-        // Split into individual questions (look for bullet points or lines starting with -)
-        const subQuestions = questionText
-          .split(/\n\s*-\s*|\n\s*•\s*/)
-          .map(q => q.trim())
-          .filter(q => q.length > 0 && q.includes('?'));
+        const extractedQuestions: Question[] = matches.map(match => {
+          return {
+            category: `Question ${match[1]}`,
+            questions: [match[2].trim()]
+          };
+        });
         
-        return {
-          category,
-          questions: subQuestions.length > 0 ? subQuestions : [questionText]
-        };
-      });
+        console.log("Parsed questions without categories:", extractedQuestions.length);
+        setParsedQuestions(extractedQuestions);
+        
+        // Initialize responses object with empty strings
+        const initialResponses: {[key: string]: string} = {};
+        extractedQuestions.forEach((q, i) => {
+          initialResponses[`question_${i}`] = '';
+        });
+        setResponses(initialResponses);
+      } else {
+        // If no questions found, use the whole section as one question
+        console.log("No questions found, using whole section as one question");
+        setParsedQuestions([{
+          category: "Additional Information",
+          questions: ["Please provide any additional information that might help with metadata construction."]
+        }]);
+        
+        setResponses({ "question_0": "" });
+      }
+    } else {
+      // If no follow-up questions section found, check for numbered questions directly
+      const questionRegex = /(\d+)\.\s+([^\n]+)/g;
+      const matches = [...questions.matchAll(questionRegex)];
       
-      setParsedQuestions(extractedQuestions);
-      
-      // Initialize responses object with empty strings
-      const initialResponses: {[key: string]: string} = {};
-      extractedQuestions.forEach((q, i) => {
-        initialResponses[`question_${i}`] = '';
-      });
-      setResponses(initialResponses);
+      if (matches.length > 0) {
+        console.log("Found numbered questions:", matches.length);
+        
+        const extractedQuestions: Question[] = matches.map(match => {
+          return {
+            category: `Question ${match[1]}`,
+            questions: [match[2].trim()]
+          };
+        });
+        
+        console.log("Parsed questions without categories:", extractedQuestions.length);
+        setParsedQuestions(extractedQuestions);
+        
+        // Initialize responses object with empty strings
+        const initialResponses: {[key: string]: string} = {};
+        extractedQuestions.forEach((q, i) => {
+          initialResponses[`question_${i}`] = '';
+        });
+        setResponses(initialResponses);
+      } else {
+        // If no questions found, use the whole text as one question
+        console.log("No questions found, using whole text as one question");
+        setParsedQuestions([{
+          category: "Additional Information",
+          questions: ["Please provide any additional information that might help with metadata construction."]
+        }]);
+        
+        setResponses({ "question_0": "" });
+      }
     }
   }, [questions]);
   
   const handleResponseChange = (questionIndex: number, value: string) => {
+    console.log("Response changed for question", questionIndex);
     setResponses(prev => ({
       ...prev,
       [`question_${questionIndex}`]: value
@@ -73,6 +172,7 @@ export function FollowUpQuestions({ questions, isLoading, onSubmitResponse }: Fo
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("Form submitted");
     
     // Combine all responses into a single formatted string
     const combinedResponse = parsedQuestions.map((question, index) => {
@@ -83,18 +183,19 @@ export function FollowUpQuestions({ questions, isLoading, onSubmitResponse }: Fo
     }).filter(Boolean).join('');
     
     if (combinedResponse.trim()) {
+      console.log("Combined response created, length:", combinedResponse.length);
+      // Call the onSubmitResponse callback with the combined response
       onSubmitResponse(combinedResponse);
       
-      // Reset responses
-      const resetResponses: {[key: string]: string} = {};
-      parsedQuestions.forEach((_, i) => {
-        resetResponses[`question_${i}`] = '';
-      });
-      setResponses(resetResponses);
+      // Don't reset responses here - let the parent component handle this
+      // after the API call is complete
+    } else {
+      console.log("No response to submit");
     }
   };
   
   const isAnyResponseFilled = Object.values(responses).some(response => response.trim().length > 0);
+  console.log("isAnyResponseFilled:", isAnyResponseFilled);
 
   return (
     <div className="border border-[#E5E7EB] rounded-md p-4 mb-6">

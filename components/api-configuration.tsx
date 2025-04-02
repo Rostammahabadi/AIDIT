@@ -95,8 +95,10 @@ export function ApiConfiguration({
                 onMouseLeave={() => setShowModelTooltip(false)}
               />
               {showModelTooltip && (
-                <div className="absolute z-10 w-64 p-2 bg-gray-800 text-white text-xs rounded shadow-lg -left-32 top-6">
+                <div className="absolute z-10 w-72 p-2 bg-gray-800 text-white text-xs rounded shadow-lg -left-32 top-6">
                   Different models have different capabilities and context windows. All models here have at least 16K token context windows, with newer models offering up to 200K tokens.
+                  <br /><br />
+                  <b>Note:</b> o-series models (o1, o3) use <code>max_completion_tokens</code> and do not support temperature parameter. Other models use <code>max_tokens</code> and support temperature.
                 </div>
               )}
             </div>
@@ -106,16 +108,31 @@ export function ApiConfiguration({
             value={model}
             onChange={(e) => onModelChange(e.target.value)}
           >
-            <option value="o3-mini">o3-mini (200K context)</option>
-            <option value="o1">o1 (200K context)</option>
-            <option value="o1-mini">o1-mini (128K context)</option>
-            <option value="gpt-4o-mini">GPT-4o mini (128K context)</option>
-            <option value="gpt-4-turbo">GPT-4 Turbo (128K context)</option>
-            <option value="gpt-4-1106-preview">GPT-4 Turbo Preview (128K context)</option>
-            <option value="gpt-4-0125-preview">GPT-4 Turbo Preview 0125 (128K context)</option>
-            <option value="gpt-4-vision-preview">GPT-4 Vision (128K context)</option>
-            <option value="gpt-3.5-turbo-16k">GPT-3.5 Turbo 16K (16K context)</option>
-            <option value="gpt-3.5-turbo">GPT-3.5 Turbo (16K context)</option>
+            {/* Featured Models */}
+            <optgroup label="Featured Models">
+              <option value="gpt-4.5-preview">GPT-4.5 Preview (200K context)</option>
+              <option value="o3-mini">o3-mini (200K context)</option>
+              <option value="gpt-4o">GPT-4o (128K context)</option>
+            </optgroup>
+
+            {/* Reasoning Models */}
+            <optgroup label="Reasoning Models">
+              <option value="o1">o1 (200K context)</option>
+              <option value="o1-mini">o1-mini (128K context)</option>
+              <option value="o1-pro">o1-pro (200K context)</option>
+            </optgroup>
+
+            {/* Cost-optimized Models */}
+            <optgroup label="Cost-optimized Models">
+              <option value="gpt-4o-mini">GPT-4o mini (128K context)</option>
+            </optgroup>
+
+            {/* Older GPT Models */}
+            <optgroup label="Older GPT Models">
+              <option value="gpt-4-turbo">GPT-4 Turbo (128K context)</option>
+              <option value="gpt-3.5-turbo-16k">GPT-3.5 Turbo 16K (16K context)</option>
+              <option value="gpt-3.5-turbo">GPT-3.5 Turbo (16K context)</option>
+            </optgroup>
           </select>
         </div>
 

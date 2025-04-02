@@ -1,6 +1,46 @@
 // OpenAI API utilities
 
 /**
+ * Checks if the model requires max_completion_tokens instead of max_tokens
+ * @param model The model name to check
+ * @returns True if the model requires max_completion_tokens, false otherwise
+ */
+export const requiresMaxCompletionTokens = (model: string): boolean => {
+  // All o-series models (o1, o3, etc.) require max_completion_tokens
+  if (model.includes('o1') || model.includes('o3')) {
+    return true;
+  }
+  
+  // GPT-4o models require max_completion_tokens
+  if (model.includes('gpt-4o')) {
+    return true;
+  }
+  
+  // GPT-4.5 models require max_completion_tokens
+  if (model.includes('gpt-4.5')) {
+    return true;
+  }
+  
+  // Older models use max_tokens
+  return false;
+};
+
+/**
+ * Checks if the model supports the temperature parameter
+ * @param model The model name to check
+ * @returns True if the model supports temperature, false otherwise
+ */
+export const supportsTemperature = (model: string): boolean => {
+  // o-series models do not support temperature
+  if (model.includes('o1') || model.includes('o3')) {
+    return false;
+  }
+  
+  // All other models support temperature
+  return true;
+};
+
+/**
  * Base function to send a request to OpenAI API
  * @param apiKey OpenAI API key
  * @param systemMessage The system message that defines the AI's role
@@ -17,27 +57,43 @@ export const sendOpenAIRequest = async (
   model = 'gpt-4-turbo'
 ): Promise<any> => {
   try {
+    // Determine if we need to use max_completion_tokens instead of max_tokens
+    const useMaxCompletionTokens = requiresMaxCompletionTokens(model);
+    const usesTemperature = supportsTemperature(model);
+    
+    const requestBody: any = {
+      model: model,
+      messages: [
+        {
+          role: 'system',
+          content: systemMessage
+        },
+        {
+          role: 'user',
+          content: userPrompt
+        }
+      ]
+    };
+    
+    // Add temperature only for models that support it
+    if (usesTemperature) {
+      requestBody.temperature = 0.7;
+    }
+    
+    // Add the appropriate token limit parameter based on the model
+    if (useMaxCompletionTokens) {
+      requestBody.max_completion_tokens = maxTokens;
+    } else {
+      requestBody.max_tokens = maxTokens;
+    }
+    
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
-      body: JSON.stringify({
-        model: model,
-        messages: [
-          {
-            role: 'system',
-            content: systemMessage
-          },
-          {
-            role: 'user',
-            content: userPrompt
-          }
-        ],
-        temperature: 0.7,
-        max_tokens: maxTokens
-      })
+      body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {
@@ -85,6 +141,23 @@ Metadata Utility: What information about the data chunks needs to be retrieved a
 
 Base your follow-up questions on these areas to elicit the necessary details for making informed decisions on metadata field creation, data types, and indexing strategies.
 
+RESPONSE FORMAT:
+Your response MUST be structured in exactly these sections with these exact headings:
+
+1. BRIEF SUMMARY OF FILE CONTENT
+Provide a concise analysis of the document's content, structure, and key attributes.
+
+2. FOLLOW-UP QUESTIONS FOR METADATA CONSTRUCTION
+Organize your questions into these categories (use exactly these category headers):
+A) CORE USE CASE & QUERY NEEDS
+B) ANTICIPATED QUERIES & INFORMATION NEEDS
+C) ESSENTIAL FILTERING & CONSTRAINTS
+D) DATA PROVENANCE & STRUCTURE
+E) METADATA RETRIEVAL & UTILITY
+F) FUTURE USAGE & MAINTENANCE
+
+Under each category, include 1-2 numbered questions that are most relevant.
+
 IMPORTANT: At the end of your response, include a section titled "NEED_MORE_INFO" with a value of either "YES" or "NO". If you have all the information you need to provide a final recommendation, set it to "NO". If you still need more information, set it to "YES".`;
 
   return sendOpenAIRequest(apiKey, systemMessage, prompt, maxTokens, model);
@@ -119,9 +192,22 @@ Consider asking about:
 4. Implementation constraints or preferences
 5. Any other critical information needed to finalize your recommendations
 
-Format your response with:
-1. A brief summary of what you understand so far
-2. Your specific follow-up questions (numbered and focused)
+RESPONSE FORMAT:
+Your response MUST be structured in exactly these sections with these exact headings:
+
+1. BRIEF SUMMARY OF UNDERSTANDING
+Provide a concise summary of what you understand so far from the document and previous responses.
+
+2. FOLLOW-UP QUESTIONS FOR METADATA CONSTRUCTION
+Organize your questions into these categories (use exactly these category headers):
+A) CORE USE CASE & QUERY NEEDS
+B) ANTICIPATED QUERIES & INFORMATION NEEDS
+C) ESSENTIAL FILTERING & CONSTRAINTS
+D) DATA PROVENANCE & STRUCTURE
+E) METADATA RETRIEVAL & UTILITY
+F) FUTURE USAGE & MAINTENANCE
+
+Under each relevant category, include 1-2 numbered questions that are most important to ask.
 
 IMPORTANT: At the end of your response, include a section titled "NEED_MORE_INFO" with a value of either "YES" or "NO". If you have all the information you need to provide a final recommendation, set it to "NO". If you still need more information, set it to "YES".`;
 

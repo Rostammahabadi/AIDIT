@@ -32,39 +32,6 @@ interface FileInfo {
   content: any;
 }
 
-// Function to detect data type
-const detectType = (value: any) => {
-  if (value === undefined || value === null) return "unknown";
-  if (typeof value === "number") return "number";
-  if (!isNaN(Number(value))) return "number";
-  if (Date.parse(String(value))) return "date";
-  return "string";
-};
-
-// Function to analyze JSON structure
-function analyzeJsonStructure(obj: any, depth = 0) {
-  const result = { depth, arrays: 0, objects: 0, totalKeys: 0 };
-  if (Array.isArray(obj)) {
-    result.arrays++;
-    obj.forEach(item => {
-      const sub = analyzeJsonStructure(item, depth + 1);
-      result.arrays += sub.arrays;
-      result.objects += sub.objects;
-      result.totalKeys += sub.totalKeys;
-    });
-  } else if (typeof obj === "object" && obj !== null) {
-    result.objects++;
-    result.totalKeys += Object.keys(obj).length;
-    Object.values(obj).forEach(val => {
-      const sub = analyzeJsonStructure(val, depth + 1);
-      result.arrays += sub.arrays;
-      result.objects += sub.objects;
-      result.totalKeys += sub.totalKeys;
-    });
-  }
-  return result;
-}
-
 // PDF handling function with SSR safety
 async function handlePdf(file: File) {
   if (!pdfjsLib) {
@@ -355,48 +322,129 @@ export default function Home() {
         const needMoreInfo = needMoreInfoIndex !== -1 && 
                             responseText.substring(needMoreInfoIndex).includes("YES");
         
-        const followUpIndex = responseText.toLowerCase().indexOf("follow-up question")
+        // Look for follow-up questions section with case insensitivity
+        const followUpIndex = responseText.search(/FOLLOW-UP QUESTIONS|FOLLOW UP QUESTIONS|FOLLOW-UP QUESTIONS FOR/i);
         
         if (followUpIndex !== -1) {
           // Extract the follow-up questions section
           const followUpSection = responseText.substring(followUpIndex)
           // Remove the NEED_MORE_INFO section if present
-          const cleanedFollowUpSection = needMoreInfoIndex !== -1 
-            ? followUpSection.substring(0, followUpSection.indexOf("NEED_MORE_INFO"))
-            : followUpSection;
+          let cleanedFollowUpSection = "";
+          
+          if (needMoreInfoIndex !== -1 && followUpSection.indexOf("NEED_MORE_INFO") !== -1) {
+            cleanedFollowUpSection = followUpSection.substring(0, followUpSection.indexOf("NEED_MORE_INFO")).trim();
+          } else {
+            cleanedFollowUpSection = followUpSection.trim();
+          }
+          
+          console.log("Extracted follow-up questions, length:", cleanedFollowUpSection.length);
+          
+          // Only set follow-up questions if we actually extracted content
+          if (cleanedFollowUpSection.length > 0) {
+            // Add the AI's response to conversation memory
+            setConversationMemory(prevMemory => [
+              ...prevMemory,
+              { role: "assistant", content: responseText }
+            ]);
             
-          setFollowUpQuestions(cleanedFollowUpSection)
-          
-          // Extract the summary section
-          const summarySection = responseText.substring(0, followUpIndex).trim()
-          
-          // Add the AI's response to conversation memory
-          setConversationMemory(prevMemory => [
-            ...prevMemory,
-            { role: "assistant", content: responseText }
-          ])
-          
-          // Don't show results until maximum depth is reached
-          setResults(null)
-        } else {
-          // If no follow-up questions found, just show the entire response
-          // Remove the NEED_MORE_INFO section if present
-          const cleanedResponse = needMoreInfoIndex !== -1 
-            ? responseText.substring(0, needMoreInfoIndex).trim()
-            : responseText;
+            // Set the follow-up questions
+            console.log("Setting follow-up questions");
+            setFollowUpQuestions(cleanedFollowUpSection);
             
-          setFollowUpQuestions(null)
-          setConversationMemory(prevMemory => [
-            ...prevMemory,
-            { role: "assistant", content: responseText }
-          ])
-          setResults({
-            insights: cleanedResponse,
-            apiResponse: {
-              model: openAIResponse.model,
-              usage: openAIResponse.usage
+            // Don't show results until maximum depth is reached
+            // setResults(null);
+          } else {
+            console.log("Extracted follow-up section was empty, trying alternative extraction method");
+            // Try to extract questions using a different approach
+            const questionRegex = /(?:\d+\.|\([A-Za-z]\))\s+([^\n]+)/g;
+            const questions = [...responseText.matchAll(questionRegex)];
+            
+            if (questions.length > 0) {
+              // Format the questions in a clean way
+              const formattedQuestions = questions.map(q => q[0]).join("\n\n");
+              
+              // Add the AI's response to conversation memory
+              setConversationMemory(prevMemory => [
+                ...prevMemory,
+                { role: "assistant", content: responseText }
+              ]);
+              
+              // Set the follow-up questions
+              console.log("Setting follow-up questions from alternative method");
+              setFollowUpQuestions(formattedQuestions);
+              
+              // Don't show results until maximum depth is reached
+              // setResults(null);
+            } else {
+              // If still no questions found, use the entire cleaned response
+              console.log("No questions found with alternative method, using entire response");
+              setFollowUpQuestions(responseText);
+              
+              // Add the AI's response to conversation memory
+              setConversationMemory(prevMemory => [
+                ...prevMemory,
+                { role: "assistant", content: responseText }
+              ]);
+              
+              // Don't show results until maximum depth is reached
+              // setResults(null);
             }
-          })
+          }
+        } else {
+          // If no specific follow-up questions section found, look for numbered or lettered questions
+          const questionRegex = /(?:\d+\.|\([A-Za-z]\))\s+([^\n]+)/g;
+          const questions = [...responseText.matchAll(questionRegex)];
+          
+          if (questions.length > 0) {
+            // Format the questions in a clean way
+            const formattedQuestions = questions.map(q => q[0]).join("\n\n");
+            
+            // Add the AI's response to conversation memory
+            setConversationMemory(prevMemory => [
+              ...prevMemory,
+              { role: "assistant", content: responseText }
+            ]);
+            
+            // Set the follow-up questions
+            console.log("Setting follow-up questions");
+            setFollowUpQuestions(formattedQuestions);
+            
+            // Don't show results until maximum depth is reached
+            // setResults(null);
+          } else {
+            // If still no questions found, check for sections with question marks
+            const questionMarkRegex = /([^\.\?]+\?)/g;
+            const questionMarkMatches = [...responseText.matchAll(questionMarkRegex)];
+            
+            if (questionMarkMatches.length > 0) {
+              const formattedQuestions = questionMarkMatches.map(q => q[0].trim()).join("\n\n");
+              
+              // Add the AI's response to conversation memory
+              setConversationMemory(prevMemory => [
+                ...prevMemory,
+                { role: "assistant", content: responseText }
+              ]);
+              
+              // Set the follow-up questions
+              console.log("Setting follow-up questions");
+              setFollowUpQuestions(formattedQuestions);
+              
+              // Don't show results until maximum depth is reached
+              // setResults(null);
+            } else {
+              // If still no questions found, use the whole response as a prompt for more info
+              setFollowUpQuestions("Based on the AI's analysis, please provide any additional information that might help with metadata construction.");
+              
+              // Add the AI's response to conversation memory
+              setConversationMemory(prevMemory => [
+                ...prevMemory,
+                { role: "assistant", content: responseText }
+              ]);
+              
+              // Don't show results until maximum depth is reached
+              // setResults(null);
+            }
+          }
         }
       } else {
         // No follow-up questions, just show the results
@@ -516,11 +564,16 @@ export default function Home() {
   const handleFollowUpResponse = async (response: string) => {
     if (!apiKey || !followUpQuestions || !fileInfos.length) return
     
+    console.log("handleFollowUpResponse called with response:", response.substring(0, 50) + "...");
+    console.log("Current question depth:", currentQuestionDepth);
+    console.log("Max question depth:", maxQuestionDepth);
+    
     setIsSubmittingResponse(true)
     
     try {
       // Increment the current question depth
       const newQuestionDepth = currentQuestionDepth + 1;
+      console.log("New question depth:", newQuestionDepth);
       setCurrentQuestionDepth(newQuestionDepth);
       
       // Add the user's response to the conversation memory
@@ -553,6 +606,13 @@ export default function Home() {
             }
           }
         }
+        // Add the last assistant message
+        if (conversationMemory.length > 0) {
+          const lastAssistantMessage = conversationMemory[conversationMemory.length - 1];
+          if (lastAssistantMessage.role === "assistant") {
+            prompt += `Assistant: ${lastAssistantMessage.content.trim()}\n\n`;
+          }
+        }
       }
       
       // Add the current response
@@ -562,85 +622,30 @@ export default function Home() {
       const isFinalRound = newQuestionDepth >= maxQuestionDepth;
       
       // Send the follow-up response to OpenAI using the appropriate method
-      const openAIResponse = isFinalRound || newQuestionDepth === maxQuestionDepth - 1
+      const openAIResponse = isFinalRound
         ? await sendFinalAnalysisToOpenAI(apiKey, prompt, maxTokens, model)
         : await sendFollowUpQuestionToOpenAI(apiKey, prompt, maxTokens, model);
       
       // Extract response text
       const responseText = openAIResponse.text;
+      console.log("OpenAI response received, length:", responseText.length);
       
       // Check if the AI needs more information
       const needMoreInfoIndex = responseText.indexOf("NEED_MORE_INFO");
+      console.log("NEED_MORE_INFO index:", needMoreInfoIndex);
       const needMoreInfo = needMoreInfoIndex !== -1 && 
                           responseText.substring(needMoreInfoIndex).includes("YES");
+      console.log("needMoreInfo flag:", needMoreInfo);
       
       // Clean the response text by removing the NEED_MORE_INFO section
       const cleanedResponseText = needMoreInfoIndex !== -1 
         ? responseText.substring(0, needMoreInfoIndex).trim()
         : responseText;
+      console.log("Cleaned response text length:", cleanedResponseText.length);
       
-      if (newQuestionDepth < maxQuestionDepth && needMoreInfo) {
-        // Continue asking questions
-        // Look for follow-up questions in the response
-        const followUpIndex = cleanedResponseText.lastIndexOf("Your specific follow-up questions");
-        
-        if (followUpIndex !== -1) {
-          // Extract the follow-up questions section
-          const followUpSection = cleanedResponseText.substring(followUpIndex);
-          
-          // Clean up the follow-up questions by removing any system instructions
-          const cleanedFollowUpSection = followUpSection
-            .replace(/Your specific follow-up questions/i, "")
-            .replace(/\(numbered and focused\)/i, "")
-            .trim();
-            
-          setFollowUpQuestions(cleanedFollowUpSection);
-          
-          // Extract the summary section
-          const summarySection = cleanedResponseText.substring(0, followUpIndex).trim();
-          
-          // Add the AI's response to conversation memory
-          setConversationMemory(prevMemory => [
-            ...prevMemory,
-            { role: "assistant", content: responseText }
-          ]);
-          
-          // Don't show results until maximum depth is reached
-          setResults(null);
-        } else {
-          // If no specific follow-up questions section found, look for numbered questions
-          const questionRegex = /\d+\.\s+([^\n]+)/g;
-          const questions = [...cleanedResponseText.matchAll(questionRegex)];
-          
-          if (questions.length > 0) {
-            // Format the questions in a clean way
-            const formattedQuestions = questions.map(q => q[0]).join("\n\n");
-            setFollowUpQuestions(formattedQuestions);
-            
-            // Add the AI's response to conversation memory
-            setConversationMemory(prevMemory => [
-              ...prevMemory,
-              { role: "assistant", content: responseText }
-            ]);
-            
-            // Don't show results until maximum depth is reached
-            setResults(null);
-          } else {
-            // If still no questions found, use the whole response as a prompt for more info
-            setFollowUpQuestions("Based on the AI's analysis, please provide any additional information that might help with metadata construction.");
-            
-            // Add the AI's response to conversation memory
-            setConversationMemory(prevMemory => [
-              ...prevMemory,
-              { role: "assistant", content: responseText }
-            ]);
-            
-            // Don't show results until maximum depth is reached
-            setResults(null);
-          }
-        }
-      } else {
-        // We've reached the maximum question depth or AI has enough info, provide final results
+      // If this is the final round or AI explicitly indicates it has enough info, process the final results
+      if (isFinalRound || (needMoreInfoIndex !== -1 && !needMoreInfo)) {
+        console.log("Processing final results. isFinalRound:", isFinalRound);
         try {
           // Try to parse the response as JSON first
           const parsedResponse = JSON.parse(cleanedResponseText);
@@ -738,18 +743,171 @@ export default function Home() {
           });
         }
         
-        // Clear the follow-up questions since we've reached the maximum depth or AI has enough info
-        setFollowUpQuestions(null);
+        // Add the AI's response to conversation memory
+        setConversationMemory(prevMemory => [
+          ...prevMemory,
+          { role: "assistant", content: responseText }
+        ]);
+        
+        // Store whether this was the final round to clear follow-up questions later
+        // We'll do this in the finally block to ensure loading state is properly shown
+      } else {
+        // Continue asking questions - either we're not at max depth and AI needs more info,
+        // or we're not at max depth and there's no NEED_MORE_INFO marker (assume we need more info)
+        console.log("Continuing with follow-up questions");
+        // Look for follow-up questions in the response
+        const followUpIndex = cleanedResponseText.search(/FOLLOW-UP QUESTIONS|FOLLOW UP QUESTIONS|FOLLOW-UP QUESTIONS FOR/i);
+        console.log("Follow-up questions index:", followUpIndex);
+        
+        if (followUpIndex !== -1) {
+          // Extract the follow-up questions section
+          const followUpSection = cleanedResponseText.substring(followUpIndex);
+          // Remove the NEED_MORE_INFO section if present
+          let cleanedFollowUpSection = "";
+          
+          if (needMoreInfoIndex !== -1 && followUpSection.indexOf("NEED_MORE_INFO") !== -1) {
+            cleanedFollowUpSection = followUpSection.substring(0, followUpSection.indexOf("NEED_MORE_INFO")).trim();
+          } else {
+            cleanedFollowUpSection = followUpSection.trim();
+          }
+          
+          console.log("Extracted follow-up questions, length:", cleanedFollowUpSection.length);
+          
+          // Only set follow-up questions if we actually extracted content
+          if (cleanedFollowUpSection.length > 0) {
+            // Add the AI's response to conversation memory
+            setConversationMemory(prevMemory => [
+              ...prevMemory,
+              { role: "assistant", content: responseText }
+            ]);
+            
+            // Set the follow-up questions
+            console.log("Setting follow-up questions");
+            setFollowUpQuestions(cleanedFollowUpSection);
+            
+            // Don't show results until maximum depth is reached
+            // setResults(null);
+          } else {
+            console.log("Extracted follow-up section was empty, trying alternative extraction method");
+            // Try to extract questions using a different approach
+            const questionRegex = /(?:\d+\.|\([A-Za-z]\))\s+([^\n]+)/g;
+            const questions = [...cleanedResponseText.matchAll(questionRegex)];
+            
+            if (questions.length > 0) {
+              // Format the questions in a clean way
+              const formattedQuestions = questions.map(q => q[0]).join("\n\n");
+              
+              // Add the AI's response to conversation memory
+              setConversationMemory(prevMemory => [
+                ...prevMemory,
+                { role: "assistant", content: responseText }
+              ]);
+              
+              // Set the follow-up questions
+              console.log("Setting follow-up questions from alternative method");
+              setFollowUpQuestions(formattedQuestions);
+              
+              // Don't show results until maximum depth is reached
+              // setResults(null);
+            } else {
+              // If still no questions found, use the entire cleaned response
+              console.log("No questions found with alternative method, using entire response");
+              setFollowUpQuestions(cleanedResponseText);
+              
+              // Add the AI's response to conversation memory
+              setConversationMemory(prevMemory => [
+                ...prevMemory,
+                { role: "assistant", content: responseText }
+              ]);
+              
+              // Don't show results until maximum depth is reached
+              // setResults(null);
+            }
+          }
+        } else {
+          // If no specific follow-up questions section found, look for numbered or lettered questions
+          const questionRegex = /(?:\d+\.|\([A-Za-z]\))\s+([^\n]+)/g;
+          const questions = [...cleanedResponseText.matchAll(questionRegex)];
+          
+          if (questions.length > 0) {
+            // Format the questions in a clean way
+            const formattedQuestions = questions.map(q => q[0]).join("\n\n");
+            
+            // Add the AI's response to conversation memory
+            setConversationMemory(prevMemory => [
+              ...prevMemory,
+              { role: "assistant", content: responseText }
+            ]);
+            
+            // Set the follow-up questions
+            console.log("Setting follow-up questions");
+            setFollowUpQuestions(formattedQuestions);
+            
+            // Don't show results until maximum depth is reached
+            // setResults(null);
+          } else {
+            // If still no questions found, check for sections with question marks
+            const questionMarkRegex = /([^\.\?]+\?)/g;
+            const questionMarkMatches = [...cleanedResponseText.matchAll(questionMarkRegex)];
+            
+            if (questionMarkMatches.length > 0) {
+              const formattedQuestions = questionMarkMatches.map(q => q[0].trim()).join("\n\n");
+              
+              // Add the AI's response to conversation memory
+              setConversationMemory(prevMemory => [
+                ...prevMemory,
+                { role: "assistant", content: responseText }
+              ]);
+              
+              // Set the follow-up questions
+              console.log("Setting follow-up questions");
+              setFollowUpQuestions(formattedQuestions);
+              
+              // Don't show results until maximum depth is reached
+              // setResults(null);
+            } else {
+              // If still no questions found, use the whole response as a prompt for more info
+              setFollowUpQuestions("Based on the AI's analysis, please provide any additional information that might help with metadata construction.");
+              
+              // Add the AI's response to conversation memory
+              setConversationMemory(prevMemory => [
+                ...prevMemory,
+                { role: "assistant", content: responseText }
+              ]);
+              
+              // Don't show results until maximum depth is reached
+              // setResults(null);
+            }
+          }
+        }
       }
       
     } catch (error) {
       console.error("Error processing follow-up response:", error);
+      console.log("Error in handleFollowUpResponse:", error);
       setResults({
         error: `Error processing follow-up response: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
-      setFollowUpQuestions(null);
+      // Don't clear follow-up questions on error so user can try again
     } finally {
-      setIsSubmittingResponse(false);
+      console.log("handleFollowUpResponse completed");
+      
+      // Only clear follow-up questions if we've reached the final round
+      // This ensures the loading indicator is properly shown before clearing
+      if (currentQuestionDepth >= maxQuestionDepth) {
+        console.log("Clearing follow-up questions after final round");
+        
+        // Important: First turn off the loading state to ensure the UI updates properly
+        setIsSubmittingResponse(false);
+        
+        // Then use a small timeout before clearing the questions
+        // This ensures the results have time to render first
+        setTimeout(() => {
+          setFollowUpQuestions(null);
+        }, 100);
+      } else {
+        setIsSubmittingResponse(false);
+      }
     }
   };
 
@@ -907,6 +1065,19 @@ export default function Home() {
     }
   }
 
+  // Effect to log state changes
+  useEffect(() => {
+    console.log("followUpQuestions state changed:", followUpQuestions ? "present" : "null");
+  }, [followUpQuestions]);
+  
+  useEffect(() => {
+    console.log("currentQuestionDepth state changed:", currentQuestionDepth);
+  }, [currentQuestionDepth]);
+  
+  useEffect(() => {
+    console.log("isSubmittingResponse state changed:", isSubmittingResponse);
+  }, [isSubmittingResponse]);
+
   return (
     <main className="min-h-screen bg-[#F5F5F5] flex flex-col items-center px-4 py-8">
       <div className="w-full max-w-[800px]">
@@ -948,29 +1119,27 @@ export default function Home() {
 
         {isProcessed && (
           <>
-            {followUpQuestions && currentQuestionDepth < maxQuestionDepth && (
+            {(followUpQuestions || isSubmittingResponse) && (
               <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
                 <FollowUpQuestions
-                  questions={followUpQuestions}
+                  questions={followUpQuestions || ""}
                   onSubmitResponse={handleFollowUpResponse}
                   isLoading={isSubmittingResponse}
                 />
-                {isSubmittingResponse && (
-                  <div className="mt-4 flex justify-center">
-                    <div className="flex items-center space-x-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-md">
-                      <div className="w-5 h-5 border-t-2 border-b-2 border-blue-700 rounded-full animate-spin"></div>
-                      <span>Processing your response...</span>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
+            
+            {/* Log when this section renders or not */}
+            {console.log("Follow-up questions section rendering:", followUpQuestions ? "yes" : "no")}
 
             {results && (
               <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
                 <ResultsSection results={results} aiService={aiService} />
               </div>
             )}
+            
+            {/* Log when results section renders or not */}
+            {console.log("Results section rendering:", results ? "yes" : "no")}
           </>
         )}
 
