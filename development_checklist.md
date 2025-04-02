@@ -102,3 +102,13 @@ Recent Updates (April 2025):
 - [x] Implemented conversation memory system to maintain context across multiple question rounds
 - [x] Fixed input handling for the Maximum Tokens field to ensure users can type numeric values
 - [x] Removed the Refinement Section component as it was replaced by the enhanced follow-up questions system
+
+Security Enhancements (April 2025):
+- [x] Replaced localStorage with sessionStorage for API key management to improve security
+- [x] Implemented encryption for the API key before storing in sessionStorage
+- [x] Created securityUtils.ts utility with encryption/decryption functions
+- [x] Added a "Clear API Key" button to allow users to manually remove their credentials
+- [x] Created a SecurityNotice component to inform users about security measures
+- [x] Updated API key storage information text to reflect the security improvements
+- [x] Standardized on "openai_api_key" naming convention throughout the application
+- [x] Improved overall API key handling with best security practices

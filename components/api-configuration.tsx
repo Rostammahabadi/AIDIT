@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Check, X, Loader2, Info } from "lucide-react"
+import { Check, X, Loader2, Info, Trash2 } from "lucide-react"
 
 interface ApiConfigurationProps {
   apiKey: string
@@ -38,6 +38,13 @@ export function ApiConfiguration({
   const [showModelTooltip, setShowModelTooltip] = useState(false)
   const [tokenError, setTokenError] = useState(false)
 
+  const handleClearApiKey = () => {
+    // Clear the API key from state
+    onApiKeyChange("");
+    // Clear the API key from session storage
+    sessionStorage.removeItem("openai_api_key");
+  }
+
   return (
     <div>
       <h2 className="text-xl font-semibold mb-4">AI Service Configuration</h2>
@@ -73,7 +80,7 @@ export function ApiConfiguration({
             </button>
           </div>
           <p className="text-xs text-[#6B7280] mt-1">
-            Your API key is stored locally in your browser and never sent to our servers.
+            Your API key is encrypted and stored in your browser's session storage. It will be cleared when you close the browser and is never sent to our servers.
           </p>
         </div>
 
@@ -227,6 +234,16 @@ export function ApiConfiguration({
               "Test Connection"
             )}
           </button>
+
+          {apiKey && (
+            <button
+              className="py-2 px-4 rounded-md border border-red-500 text-red-500 hover:bg-red-50 transition-transform hover:scale-105 flex items-center"
+              onClick={handleClearApiKey}
+            >
+              <Trash2 size={16} className="mr-2" />
+              Clear API Key
+            </button>
+          )}
 
           {isConnected !== null && (
             <div className="flex items-center">

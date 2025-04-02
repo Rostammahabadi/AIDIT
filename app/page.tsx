@@ -8,11 +8,13 @@ import { ResultsSection } from "@/components/results-section"
 import { FollowUpQuestions } from "@/components/follow-up-questions"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
+import { SecurityNotice } from "@/components/security-notice"
 import * as XLSX from 'xlsx'
 import mammoth from 'mammoth'
 import * as pdfjsLib from 'pdfjs-dist'
 import { processFilesInChunks } from "@/utils/workerUtils"
 import { sendToOpenAI, validateOpenAIKey, sendFinalAnalysisToOpenAI, sendFollowUpQuestionToOpenAI, sendInitialAnalysisToOpenAI } from "@/utils/openaiUtils"
+import { encryptApiKey, decryptApiKey } from "@/utils/securityUtils"
 
 // Define FileInfo interface for document processing
 interface FileInfo {
@@ -99,17 +101,23 @@ export default function Home() {
   // Add conversation memory to track all interactions
   const [conversationMemory, setConversationMemory] = useState<Array<{role: string, content: string}>>([])
 
-  // Load saved API key and service from localStorage on component mount
+  // Load saved API key and service from sessionStorage on component mount
   useEffect(() => {
-    const savedApiKey = localStorage.getItem("adit_api_key")
+    const savedEncryptedApiKey = sessionStorage.getItem("openai_api_key")
     
-    if (savedApiKey) setApiKey(savedApiKey)
+    if (savedEncryptedApiKey) {
+      const decryptedApiKey = decryptApiKey(savedEncryptedApiKey)
+      setApiKey(decryptedApiKey)
+    }
     setAiService("openai") // Always set to OpenAI
   }, [])
 
-  // Save API key and service to localStorage when they change
+  // Save API key to sessionStorage when it changes
   useEffect(() => {
-    if (apiKey) localStorage.setItem("adit_api_key", apiKey)
+    if (apiKey) {
+      const encryptedApiKey = encryptApiKey(apiKey)
+      sessionStorage.setItem("openai_api_key", encryptedApiKey)
+    }
   }, [apiKey])
 
   // Process a single file and return its information
@@ -276,9 +284,10 @@ export default function Home() {
       const isValid = await validateOpenAIKey(apiKey)
       setIsConnected(isValid)
       
-      // Store the API key in local storage if valid
+      // Store the API key in session storage if valid
       if (isValid) {
-        localStorage.setItem("openai_api_key", apiKey)
+        const encryptedApiKey = encryptApiKey(apiKey)
+        sessionStorage.setItem("openai_api_key", encryptedApiKey)
       }
     } catch (error) {
       console.error("Error testing connection:", error)
@@ -896,6 +905,8 @@ export default function Home() {
     <main className="min-h-screen bg-[#F5F5F5] flex flex-col items-center px-4 py-8">
       <div className="w-full max-w-[800px]">
         <Header />
+
+        <SecurityNotice />
 
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <FileUploadSection files={files} onFileUpload={handleFileUpload} onRemoveFile={handleRemoveFile} />
